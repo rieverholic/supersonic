@@ -13,6 +13,10 @@ public class Trie<T> {
         root.insert(word, value);
     }
 
+    public void remove(String word) {
+        root.remove(word);
+    }
+
     public T search(String word, boolean partial) {
         return root.search(word, partial);
     }
@@ -36,6 +40,22 @@ final class TrieNode<T> {
         char firstChar = word.charAt(0);
         TrieNode<T> child = this.children.computeIfAbsent(firstChar, k -> new TrieNode<>());
         child.insert(word.substring(1), value);
+    }
+
+    public void remove(String word) {
+        if (word.isEmpty()) {
+            this.value = null;
+            return;
+        }
+
+        char firstChar = word.charAt(0);
+        TrieNode<T> child = this.children.get(firstChar);
+        if (child != null) {
+            child.remove(word.substring(1));
+            if (child.value == null && child.children.isEmpty()) {
+                this.children.remove(firstChar);
+            }
+        }
     }
 
     public boolean isWord() {

@@ -1,7 +1,14 @@
 ## Supersonic
+Version: 0.2.0
 
 A Velocity plugin
 
-- Posts join/left messages to Discord
+- Posts join/leave messages to Discord
 - Adds `/say` command to Discord, allows sending messages to Minecraft servers
 - Adds `/dsay` command to Minecraft, allows sending messages to Discord
+
+### Build
+
+```shell
+./gradlew shadowJar
+```

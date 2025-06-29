@@ -24,71 +24,90 @@ import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleAddEvent;
+import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleRemoveEvent;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.requests.GatewayIntent;
-import net.dv8tion.jda.api.requests.restaction.CommandListUpdateAction;
 import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
 import dev.riever.velocity.utils.Trie;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 import static net.dv8tion.jda.api.interactions.commands.OptionType.STRING;
+import static net.dv8tion.jda.api.interactions.commands.OptionType.BOOLEAN;
 
 @Plugin(id = "supersonic", name = "Supersonic", version = "0.2.0-SNAPSHOT",
         url = "https://riever.dev", description = "A velocity plugin for Joon's Dreamyard", authors = {"Riever"})
 public class Supersonic {
 
-    private final ProxyServer server;
+    private final ProxyServer proxyServer;
     private final Logger logger;
 
     private final JDA jda;
     private final TextChannel channel;
     private final DiscordMentionProcessor processor;
+    private final Role role;
+
+    private static final String DISCORD_CHANNEL_KEY = "DISCORD_JOONBOT_CHANNEL_ID";
+    private static final String DISCORD_BOT_TOKEN_KEY = "DISCORD_JOONBOT_TOKEN";
+    private static final String DISCORD_ROLE_KEY = "DISCORD_CRAFTORIA_ROLE_ID";
 
     @Inject
-    public Supersonic(ProxyServer server, Logger logger) {
-        this.server = server;
+    public Supersonic(ProxyServer proxyServer, Logger logger) {
+        this.proxyServer = proxyServer;
         this.logger = logger;
-        this.jda = JDABuilder.createLight(System.getenv("DISCORD_JOONBOT_TOKEN"))
+        this.processor = new DiscordMentionProcessor(this.logger);
+        String discordChannelId = System.getenv(DISCORD_CHANNEL_KEY);
+        String discordBotToken = System.getenv(DISCORD_BOT_TOKEN_KEY);
+        String discordRoleId = System.getenv(DISCORD_ROLE_KEY);
+
+        this.jda = JDABuilder.createLight(discordBotToken)
                 .enableIntents(GatewayIntent.GUILD_MEMBERS)
-                .addEventListeners(new SlashCommandListener(server, logger))
+                .addEventListeners(
+                        new SlashCommandListener(proxyServer, discordRoleId, logger),
+                        new MemberRoleListener(processor, discordRoleId, logger)
+                )
                 .build();
         try {
             this.jda.awaitReady();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        this.channel = this.jda.getTextChannelById(System.getenv("DISCORD_JOONBOT_CHANNEL_ID"));
+        this.channel = this.jda.getTextChannelById(discordChannelId);
         if (this.channel == null) {
-            throw new RuntimeException("Could not find channel with ID " + System.getenv("DISCORD_JOONBOT_CHANNEL_ID"));
+            throw new RuntimeException("Could not find channel with ID " + discordChannelId);
         }
-        Role role = this.jda.getRoleById(System.getenv("DISCORD_CRAFTORIA_ROLE_ID"));
-        List<Member> memberList = this.channel.getGuild().findMembersWithRoles(role).get();
-        this.processor = new DiscordMentionProcessor(memberList, this.logger);
+        this.role = this.jda.getRoleById(discordRoleId);
     }
 
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
-        CommandListUpdateAction commands = this.jda.updateCommands();
-        commands.addCommands(
+        // Initialize Discord mention processor
+        List<Member> memberList = this.channel.getGuild().findMembersWithRoles(this.role).get();
+        this.processor.addMembers(memberList);
+
+        // Initialize Discord command
+        this.jda.updateCommands().addCommands(
+                Commands.slash("servers", "Display all current active servers")
+                        .addOption(BOOLEAN, "ephemeral", "Message only shown to you")
+        ).queue();
+        this.channel.getGuild().updateCommands().addCommands(
                 Commands.slash("say", "Send a system message to a Minecraft server")
                         .addOption(STRING, "server", "Name of the server to send a message to", true)
                         .addOption(STRING, "content", "Message to send", true)
-        );
-        commands.queue();
+        ).queue();
 
-        CommandManager commandManager = this.server.getCommandManager();
+        // Initialize Minecraft command
+        CommandManager commandManager = this.proxyServer.getCommandManager();
         CommandMeta commandMeta = commandManager.metaBuilder("dsay")
                 .plugin(this)
                 .build();
 
-        BrigadierCommand discordCommand = DiscordChatCommand.create(this.server, this.channel, this.processor);
+        BrigadierCommand discordCommand = DiscordChatCommand.create(this.proxyServer, this.channel, this.processor);
         commandManager.register(commandMeta, discordCommand);
     }
 
@@ -116,18 +135,31 @@ public class Supersonic {
 }
 
 class SlashCommandListener extends ListenerAdapter {
-    private final ProxyServer server;
+    private final ProxyServer proxyServer;
+    private final String discordRoleId;
     private final Logger logger;
 
-    public SlashCommandListener(ProxyServer server, Logger logger) {
-        this.server = server;
+    private final Map<String, String> hostMap;
+
+    public SlashCommandListener(ProxyServer proxyServer, String discordRoleId, Logger logger) {
+        this.proxyServer = proxyServer;
+        this.discordRoleId = discordRoleId;
         this.logger = logger;
+        this.hostMap = new HashMap<>();
+        this.initializeHostMap();
+    }
+
+    public void initializeHostMap() {
+        this.proxyServer.getConfiguration().getForcedHosts().forEach((hostname, serverNameList) -> {
+            for (String serverName : serverNameList) {
+                this.hostMap.put(serverName, hostname);
+            }
+        });
     }
 
     private String discordToMinecraft(String message, Guild guild) {
         StringBuilder result = new StringBuilder();
         int lastIndex = 0;
-        boolean isRole = false;
         while (true) {
             int mentionIndex = message.indexOf("<@", lastIndex);
             if (mentionIndex == -1) {
@@ -170,27 +202,74 @@ class SlashCommandListener extends ListenerAdapter {
     @Override
     public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
         if (event.getName().equals("say")) {
-            String serverName = event.getOption("server", OptionMapping::getAsString);
-            String content = event.getOption("content", OptionMapping::getAsString);
-            String username;
-            if (event.getMember() != null && event.getMember().getNickname() != null) {
-                // Use the guild-specific nickname if available
-                username = event.getMember().getNickname();
-            } else {
-                // Fall back to the global display name, or username if the global name is not set
-                username = event.getUser().getEffectiveName();
+            String serverName = Objects.requireNonNull(event.getOption("server")).getAsString();
+            String content = Objects.requireNonNull(event.getOption("content")).getAsString();
+            Member member =  Objects.requireNonNull(event.getMember());
+            boolean hasRole = member.getRoles().stream().anyMatch(role -> role.getId().equals(this.discordRoleId));
+            if (!hasRole) {
+                event.reply("You need the role <@&" + this.discordRoleId + "> to use this command. Ask your admin!")
+                        .setEphemeral(true)
+                        .queue();
+                return;
             }
 
-            RegisteredServer server = this.server.getServer(serverName).orElse(null);
+            String username;
+            if (member.getNickname() != null) {
+                // Use the guild-specific nickname if available
+                username = member.getNickname();
+            } else {
+                // Fall back to the global display name, or username if the global name is not set
+                username = member.getEffectiveName();
+            }
+
+            RegisteredServer server = this.proxyServer.getServer(serverName).orElse(null);
             if (server != null) {
-                if (content != null) {
-                    String message = this.discordToMinecraft(content, event.getGuild());
-                    server.sendMessage(Component.text("§6[Discord] §a" + username + "§f: " + message));
-                    event.reply("Message sent to `" + serverName + "`: " + content).queue();
-                }
+                String message = this.discordToMinecraft(content, event.getGuild());
+                server.sendMessage(Component.text("§6[Discord] §a" + username + "§f: " + message));
+                event.reply("Message sent to `" + serverName + "`: " + content).queue();
             } else {
                 event.reply("Server not found.").setEphemeral(true).queue();
             }
+        } else if (event.getName().equals("servers")) {
+            OptionMapping option = event.getOption("ephemeral");
+            boolean ephemeral = option != null && option.getAsBoolean();
+            List<String> messages = new ArrayList<>();
+            for (RegisteredServer server : this.proxyServer.getAllServers()) {
+                String serverName = server.getServerInfo().getName();
+                String serverHostname = this.hostMap.get(serverName);
+                String serverString = "`" + serverName + "`" + (serverHostname != null ? " (" + serverHostname + ")" : "");
+                messages.add(serverString + ": **" + server.getPlayersConnected().size() + "** players online");
+            }
+            String message = String.join("\n", messages);
+            event.reply(message).setEphemeral(ephemeral).queue();
+        }
+    }
+}
+
+class MemberRoleListener extends ListenerAdapter {
+    private final DiscordMentionProcessor processor;
+    private final String discordRoleId;
+    private final Logger logger;
+
+    public MemberRoleListener(DiscordMentionProcessor processor, String discordRoleId, Logger logger) {
+        this.processor = processor;
+        this.discordRoleId = discordRoleId;
+        this.logger = logger;
+    }
+
+    @Override
+    public void onGuildMemberRoleAdd(GuildMemberRoleAddEvent event) {
+        Member member = event.getMember();
+        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.discordRoleId))) {
+            this.processor.addMember(member);
+        }
+    }
+
+    @Override
+    public void onGuildMemberRoleRemove(GuildMemberRoleRemoveEvent event) {
+        Member member = event.getMember();
+        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.discordRoleId))) {
+            this.processor.removeMember(member);
         }
     }
 }
@@ -235,16 +314,31 @@ final class DiscordMentionProcessor {
     private final Trie<Mention> memberTrie;
     private final Logger logger;
 
-    public DiscordMentionProcessor(List<Member> memberList, Logger logger) {
+    public DiscordMentionProcessor(Logger logger) {
         this.memberTrie = new Trie<>();
         this.logger = logger;
+    }
+
+    public void addMembers(List<Member> memberList) {
         for (Member member : memberList) {
-            String nickname = member.getNickname();
-            if (nickname != null) {
-                this.memberTrie.insert(member.getNickname(), new Mention(member, true));
-            }
-            this.memberTrie.insert(member.getEffectiveName(), new Mention(member, false));
+            this.addMember(member);
         }
+    }
+
+    public void addMember(Member member) {
+        String nickname = member.getNickname();
+        if (nickname != null) {
+            this.memberTrie.insert(member.getNickname(), new Mention(member, true));
+        }
+        this.memberTrie.insert(member.getEffectiveName(), new Mention(member, false));
+    }
+
+    public void removeMember(Member member) {
+        String nickname = member.getNickname();
+        if (nickname != null) {
+            this.memberTrie.remove(member.getNickname());
+        }
+        this.memberTrie.remove(member.getEffectiveName());
     }
 
     public Mention findMention(String message) {
