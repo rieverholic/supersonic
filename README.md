@@ -11,5 +11,6 @@ A Velocity plugin
 ### Build
 
 ```shell
+./gradlew build
 ./gradlew shadowJar
 ```

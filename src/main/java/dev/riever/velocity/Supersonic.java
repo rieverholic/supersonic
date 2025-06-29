@@ -23,6 +23,7 @@ import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Role;
+import net.dv8tion.jda.api.entities.channel.Channel;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleAddEvent;
 import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleRemoveEvent;
@@ -36,6 +37,8 @@ import org.slf4j.Logger;
 import dev.riever.velocity.utils.Trie;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static net.dv8tion.jda.api.interactions.commands.OptionType.STRING;
 import static net.dv8tion.jda.api.interactions.commands.OptionType.BOOLEAN;
@@ -68,7 +71,7 @@ public class Supersonic {
         this.jda = JDABuilder.createLight(discordBotToken)
                 .enableIntents(GatewayIntent.GUILD_MEMBERS)
                 .addEventListeners(
-                        new SlashCommandListener(proxyServer, discordRoleId, logger),
+                        new SlashCommandListener(proxyServer, discordRoleId, discordChannelId, logger),
                         new MemberRoleListener(processor, discordRoleId, logger)
                 )
                 .build();
@@ -137,13 +140,18 @@ public class Supersonic {
 class SlashCommandListener extends ListenerAdapter {
     private final ProxyServer proxyServer;
     private final String discordRoleId;
+    private final String discordChannelId;
     private final Logger logger;
+
+    private final String mentionRegex = "<@&(?<role>\\d+)>|<@(?<user>\\d+)>|<#(?<channel>\\d+)>";
+    private final Pattern mentionPattern = Pattern.compile(mentionRegex);
 
     private final Map<String, String> hostMap;
 
-    public SlashCommandListener(ProxyServer proxyServer, String discordRoleId, Logger logger) {
+    public SlashCommandListener(ProxyServer proxyServer, String discordRoleId, String discordChannelId, Logger logger) {
         this.proxyServer = proxyServer;
         this.discordRoleId = discordRoleId;
+        this.discordChannelId = discordChannelId;
         this.logger = logger;
         this.hostMap = new HashMap<>();
         this.initializeHostMap();
@@ -159,30 +167,21 @@ class SlashCommandListener extends ListenerAdapter {
 
     private String discordToMinecraft(String message, Guild guild) {
         StringBuilder result = new StringBuilder();
-        int lastIndex = 0;
-        while (true) {
-            int mentionIndex = message.indexOf("<@", lastIndex);
-            if (mentionIndex == -1) {
-                result.append(message.substring(lastIndex));
-                break;
-            }
-            result.append(message, lastIndex, mentionIndex);
-            int endIndex = message.indexOf(">", mentionIndex);
-            if (endIndex == -1) {
-                result.append(message.substring(mentionIndex));
-                break;
-            }
-            if (message.charAt(mentionIndex + 2) == '&') {
-                String roleId = message.substring(mentionIndex + 3, endIndex);
+        Matcher matcher = mentionPattern.matcher(message);
+        int lastMentionIndex = 0;
+        while (matcher.find()) {
+            result.append(message, lastMentionIndex, matcher.start());
+            String roleId = matcher.group("role");
+            String userId = matcher.group("user");
+            String channelId = matcher.group("channel");
+            if (roleId != null) {
                 Role role = guild.getRoleById(roleId);
                 if (role != null) {
-                    String roleName = role.getName();
-                    result.append("§d@").append(roleName).append("§f");
+                    result.append("§b@").append(role.getName()).append("§f");
                 } else {
                     result.append("<@&").append(roleId).append(">");
                 }
-            } else {
-                String userId = message.substring(mentionIndex + 2, endIndex);
+            } else if (userId != null) {
                 Member member = guild.retrieveMemberById(userId).complete();
                 if (member != null) {
                     String username = member.getNickname();
@@ -193,9 +192,17 @@ class SlashCommandListener extends ListenerAdapter {
                 } else {
                     result.append("<@").append(userId).append(">");
                 }
+            } else if (channelId != null) {
+                Channel channel = guild.getJDA().getChannelById(Channel.class, channelId);
+                if (channel != null) {
+                    result.append("§7#").append(channel.getName()).append("§f");
+                } else {
+                    result.append("<#").append(channelId).append(">");
+                }
             }
-            lastIndex = endIndex + 1;
+            lastMentionIndex = matcher.end();
         }
+        result.append(message, lastMentionIndex, message.length());
         return result.toString();
     }
 
@@ -212,13 +219,19 @@ class SlashCommandListener extends ListenerAdapter {
                         .queue();
                 return;
             }
+            if (!Objects.requireNonNullElse(event.getChannelId(), "").equals(this.discordChannelId)) {
+                event.reply("This command can only be used in <#" + this.discordChannelId + ">.")
+                        .setEphemeral(true)
+                        .queue();
+                return;
+            }
 
             String username;
             if (member.getNickname() != null) {
                 // Use the guild-specific nickname if available
                 username = member.getNickname();
             } else {
-                // Fall back to the global display name, or username if the global name is not set
+                // Fall back to the global display name or username if the global name is not set
                 username = member.getEffectiveName();
             }
 
