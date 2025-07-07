@@ -1,4 +1,4 @@
-package dev.riever.velocity.utils;
+package dev.riever.supersonic.utils;
 
 import java.util.HashMap;
 
