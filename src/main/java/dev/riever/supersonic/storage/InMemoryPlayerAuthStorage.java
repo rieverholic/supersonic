@@ -3,15 +3,15 @@ package dev.riever.supersonic.storage;
 import com.velocitypowered.api.proxy.Player;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class InMemoryPlayerAuthStorage implements PlayerAuthStorage {
     record AuthRequest(Player player, Instant expiresAt) {}
 
-    private final Map<String, AuthRequest> authRequests = new HashMap<>();
-    private final Map<UUID, String> playerOtp = new HashMap<>();
+    private final ConcurrentMap<String, AuthRequest> authRequests = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, String> playerOtp = new ConcurrentHashMap<>();
 
     public void savePlayerAuth(Player player, String otp, Instant expiresAt) {
         UUID uuid = player.getUniqueId();
@@ -39,9 +39,11 @@ public class InMemoryPlayerAuthStorage implements PlayerAuthStorage {
     public void clearExpiredAuthRequests() {
         Instant now = Instant.now();
         this.authRequests.values().removeIf(authRequest -> authRequest.expiresAt().isBefore(now));
+        this.playerOtp.values().removeIf(otp -> !this.authRequests.containsKey(otp));
     }
 
     public void clearAllAuthRequests() {
         this.authRequests.clear();
+        this.playerOtp.clear();
     }
 }
