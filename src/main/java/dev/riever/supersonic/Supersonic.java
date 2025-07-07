@@ -131,18 +131,6 @@ public class Supersonic {
             this.logger.info("Authentication request from {} ({})", player.getUsername(), player.getUniqueId());
         }
     }
-
-    private String generateOtp() {
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < 6; i++) {
-            builder.append(this.random.nextInt(10));
-        }
-        return builder.toString();
-    }
-
-    public SupersonicConfig getConfig() {
-        return this.configManager.getConfig();
-    }
 }
 
 final class ChatCommand {
