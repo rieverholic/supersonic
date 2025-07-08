@@ -3,7 +3,6 @@ package dev.riever.supersonic.storage;
 import com.velocitypowered.api.proxy.Player;
 
 import java.time.Instant;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
