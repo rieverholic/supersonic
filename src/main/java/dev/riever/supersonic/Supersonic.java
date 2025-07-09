@@ -35,26 +35,52 @@ public class Supersonic {
 
     private final ProxyServer proxyServer;
     private final Logger logger;
-    private final SupersonicConfigManager configManager;
+    private final Path dataDirectory;
     private final Random random;
-    private final PlayerAuthManager playerAuthManager;
 
+    private SupersonicConfigManager configManager;
     private DiscordBot discordBot;
+    private PlayerAuthManager playerAuthManager;
 
     @Inject
     public Supersonic(ProxyServer proxyServer, Logger logger, @DataDirectory Path dataDirectory) {
         this.proxyServer = proxyServer;
         this.logger = logger;
-        Path configFile = dataDirectory.resolve("config.yml");
-        Path whitelistFile = dataDirectory.resolve("whitelist.yml");
-        this.configManager = new SupersonicConfigManager(configFile, logger);
+        this.dataDirectory = dataDirectory;
         this.random = new Random();
-        this.playerAuthManager = new PlayerAuthManager(whitelistFile, this.random);
     }
 
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
+        // Initialize config
+        Path configFile = this.dataDirectory.resolve("config.yml");
+        Path whitelistFile = this.dataDirectory.resolve("whitelist.yml");
+        this.configManager = new SupersonicConfigManager(configFile, logger);
         SupersonicConfig config = this.configManager.initialize();
+
+        // Initialize random
+        String entropy = config.getSeed();
+        long seed;
+        if (entropy != null && !entropy.isEmpty()) {
+            // If entropy can be cast to long, use it as a seed
+            try {
+                seed = Long.parseLong(entropy);
+            } catch (NumberFormatException e) {
+                seed = entropy.hashCode();
+            }
+            seed ^= Instant.now().getEpochSecond();
+            this.random.setSeed(seed);
+        }
+
+        // Initialize auth manager
+        SupersonicConfig.Auth authConfig = config.getAuth();
+        this.playerAuthManager = new PlayerAuthManager(
+                whitelistFile,
+                authConfig.getStorageType(),
+                authConfig.getCleanerPeriod(),
+                this.random,
+                this.logger
+        );
         this.playerAuthManager.initialize();
 
         // Initialize Discord bot
@@ -68,20 +94,6 @@ public class Supersonic {
                 this.logger
         );
         this.discordBot.initialize();
-
-        // Initialize random
-        String entropy = config.getSeed();
-        long seed;
-        if (entropy != null && !entropy.isEmpty()) {
-            // If entropy can be casted to long, use it as a seed
-            try {
-                seed = Long.parseLong(entropy);
-            } catch (NumberFormatException e) {
-                seed = entropy.hashCode();
-            }
-            seed ^= Instant.now().getEpochSecond();
-            this.random.setSeed(seed);
-        }
 
         // Initialize Minecraft command
         CommandManager commandManager = this.proxyServer.getCommandManager();

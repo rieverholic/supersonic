@@ -7,4 +7,5 @@ import java.time.Instant;
 public interface PlayerAuthStorage {
     void savePlayerAuth(Player player, String otp, Instant expiresAt);
     Player authenticate(String otp);
+    default void initialize() {}
 }

@@ -4,6 +4,7 @@ import com.velocitypowered.api.proxy.Player;
 import dev.riever.supersonic.config.WhitelistManager;
 import dev.riever.supersonic.storage.InMemoryPlayerAuthStorage;
 import dev.riever.supersonic.storage.PlayerAuthStorage;
+import org.slf4j.Logger;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -13,15 +14,19 @@ public class PlayerAuthManager {
     private final WhitelistManager whitelistManager;
     private final PlayerAuthStorage playerAuthStorage;
     private final Random random;
+    private final Logger logger;
 
-    public PlayerAuthManager(Path whitelistFile, Random random) {
+    public PlayerAuthManager(Path whitelistFile, String storageType, int cleanerPeriod, Random random, Logger logger) {
         this.whitelistManager = new WhitelistManager(whitelistFile);
-        this.playerAuthStorage = new InMemoryPlayerAuthStorage();
+        this.playerAuthStorage = new InMemoryPlayerAuthStorage(logger, cleanerPeriod);
         this.random = random;
+        this.logger = logger;
     }
 
     public void initialize() {
         this.whitelistManager.load();
+        this.playerAuthStorage.initialize();
+        this.logger.info("Initialized player auth storage");
     }
 
     private String generateOtp() {

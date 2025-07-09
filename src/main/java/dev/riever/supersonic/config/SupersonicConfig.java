@@ -20,14 +20,32 @@ public class SupersonicConfig {
         public String getRoleId() { return this.roleId; }
     }
 
-    @Comment("Discord API setting.")
+    @ConfigSerializable
+    public static class Auth {
+        @Comment("Type of storage to store auth requests. Currently only supports in-memory.")
+        @Setting(value = "storage-type")
+        private String storageType = "in-memory";
+        @Comment("The maximum amount of time (in minutes) to keep auth requests in memory before they are automatically removed.")
+        @Setting(value = "cleaner-period")
+        private int cleanerPeriod = 5;
+
+        public String getStorageType() { return this.storageType; }
+        public int getCleanerPeriod() { return this.cleanerPeriod; }
+    }
+
+    @Comment("Discord API settings.")
     @Setting(value = "discord")
     private Discord discord = new Discord();
+
+    @Comment("Authentication settings.")
+    @Setting(value = "storage")
+    private Auth auth = new Auth();
 
     @Comment("Random seed for the random number generator. Leave empty to use the system time as seed.")
     @Setting(value = "seed")
     private String seed = "";
 
+    public Auth getAuth() { return this.auth; }
     public Discord getDiscord() { return this.discord; }
     public String getSeed() { return this.seed; }
 }

@@ -25,7 +25,7 @@ import static net.dv8tion.jda.api.interactions.commands.OptionType.BOOLEAN;
 import static net.dv8tion.jda.api.interactions.commands.OptionType.STRING;
 
 public class DiscordBot {
-    private final JDA jda;
+    private final String token;
     private final String channelId;
     private final String roleId;
 
@@ -33,6 +33,8 @@ public class DiscordBot {
     private final CrossChatManager crossChatManager;
     private final PlayerAuthManager playerAuthManager;
     private final Logger logger;
+
+    private JDA jda;
 
     public DiscordBot(
             String token,
@@ -42,9 +44,7 @@ public class DiscordBot {
             PlayerAuthManager playerAuthManager,
             Logger logger
     ) {
-        this.jda = JDABuilder.createLight(token)
-                .enableIntents(GatewayIntent.GUILD_MEMBERS)
-                .build();
+        this.token = token;
         this.channelId = channelId;
         this.roleId = roleId;
         this.logger = logger;
@@ -54,13 +54,16 @@ public class DiscordBot {
     }
 
     public void initialize() {
+        this.jda = JDABuilder.createLight(token)
+                .enableIntents(GatewayIntent.GUILD_MEMBERS)
+                .build();
         try {
             this.jda.awaitReady();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
         this.jda.addEventListener(
-                new ChatCommandListener(this, this.proxyServer, this.crossChatManager, this.logger),
+                new CommandListener(this, this.proxyServer, this.crossChatManager, this.logger),
                 new MemberRoleListener(this.crossChatManager, this.roleId, this.logger)
         );
         List<Member> memberList = this.getGuild().findMembersWithRoles(this.getRole()).get();
@@ -121,7 +124,7 @@ public class DiscordBot {
     }
 }
 
-final class ChatCommandListener extends ListenerAdapter {
+final class CommandListener extends ListenerAdapter {
     private final ProxyServer proxyServer;
     private final DiscordBot discordBot;
     private final Logger logger;
@@ -130,7 +133,7 @@ final class ChatCommandListener extends ListenerAdapter {
 
     private final CrossChatManager crossChatManager;
 
-    public ChatCommandListener(DiscordBot discordBot, ProxyServer proxyServer, CrossChatManager crossChatManager, Logger logger) {
+    public CommandListener(DiscordBot discordBot, ProxyServer proxyServer, CrossChatManager crossChatManager, Logger logger) {
         this.proxyServer = proxyServer;
         this.discordBot = discordBot;
         this.logger = logger;
