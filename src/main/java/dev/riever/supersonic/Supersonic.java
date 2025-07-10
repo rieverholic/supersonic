@@ -1,13 +1,7 @@
 package dev.riever.supersonic;
 
 import com.google.inject.Inject;
-import com.mojang.brigadier.Command;
-import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.tree.LiteralCommandNode;
-import com.velocitypowered.api.command.BrigadierCommand;
-import com.velocitypowered.api.command.CommandManager;
-import com.velocitypowered.api.command.CommandMeta;
-import com.velocitypowered.api.command.CommandSource;
+import com.velocitypowered.api.command.*;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.LoginEvent;
@@ -101,8 +95,8 @@ public class Supersonic {
                 .plugin(this)
                 .build();
 
-        BrigadierCommand discordCommand = ChatCommand.create(this.discordBot.getCrossChatManager());
-        commandManager.register(commandMeta, discordCommand);
+        RawCommand chatCommand = new DiscordChatCommand(this.discordBot.getCrossChatManager());
+        commandManager.register(commandMeta, chatCommand);
     }
 
     @Subscribe
@@ -132,7 +126,7 @@ public class Supersonic {
         Player player = event.getPlayer();
         if (!this.playerAuthManager.isAuthenticated(player)) {
             String otp = this.playerAuthManager.request(player);
-            Component reply = Component.text("Welcome to Joon's Dreamyard! Please submit this code in Discord with §a/auth §b<code>§f command:")
+            Component reply = Component.text("Welcome to Joon's Dreamyard! Please submit this code on Discord with §a/auth §b<code>§f command:")
                     .append(Component.newline())
                     .append(Component.newline())
                     .append(Component.text("§l" + otp + "§r"))
@@ -145,31 +139,24 @@ public class Supersonic {
     }
 }
 
-final class ChatCommand {
-    public static BrigadierCommand create(CrossChatManager crossChatManager) {
-        LiteralCommandNode<CommandSource> discordNode = BrigadierCommand.literalArgumentBuilder("dsay")
-                .then(BrigadierCommand.requiredArgumentBuilder("message", StringArgumentType.greedyString())
-                        .suggests((ctx, builder) -> {
-                            builder.suggest("hello");
-                            return builder.buildFuture();
-                        })
-                        .executes(context -> {
-                            String content = context.getArgument("message", String.class);
-                            CommandSource source = context.getSource();
-                            if (source instanceof Player player) {
-                                String replyMessage = crossChatManager.minecraftToDiscord(player, content);
-                                Component text = Component.text(replyMessage);
-                                RegisteredServer server = player.getCurrentServer()
-                                        .map(ServerConnection::getServer)
-                                        .orElse(null);
-                                Objects.requireNonNullElse(server, player).sendMessage(text);
-                                return Command.SINGLE_SUCCESS;
-                            } else {
-                                return BrigadierCommand.FORWARD;
-                            }
-                        })
-                )
-                .build();
-        return new BrigadierCommand(discordNode);
+final class DiscordChatCommand implements RawCommand {
+    private final CrossChatManager crossChatManager;
+
+    public DiscordChatCommand(CrossChatManager crossChatManager) {
+        this.crossChatManager = crossChatManager;
+    }
+
+    @Override
+    public void execute(final Invocation invocation) {
+        String content = invocation.arguments();
+        CommandSource source = invocation.source();
+        if (source instanceof Player player) {
+            String replyMessage = crossChatManager.minecraftToDiscord(player, content);
+            Component text = Component.text(replyMessage);
+            RegisteredServer server = player.getCurrentServer()
+                    .map(ServerConnection::getServer)
+                    .orElse(null);
+            Objects.requireNonNullElse(server, player).sendMessage(text);
+        }
     }
 }

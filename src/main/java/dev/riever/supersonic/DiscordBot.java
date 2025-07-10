@@ -126,16 +126,16 @@ public class DiscordBot {
 
 final class CommandListener extends ListenerAdapter {
     private final ProxyServer proxyServer;
-    private final DiscordBot discordBot;
+    private final DiscordBot bot;
     private final Logger logger;
 
     private final Map<String, String> hostMap;
 
     private final CrossChatManager crossChatManager;
 
-    public CommandListener(DiscordBot discordBot, ProxyServer proxyServer, CrossChatManager crossChatManager, Logger logger) {
+    public CommandListener(DiscordBot bot, ProxyServer proxyServer, CrossChatManager crossChatManager, Logger logger) {
         this.proxyServer = proxyServer;
-        this.discordBot = discordBot;
+        this.bot = bot;
         this.logger = logger;
         this.crossChatManager = crossChatManager;
         this.hostMap = new HashMap<>();
@@ -156,8 +156,8 @@ final class CommandListener extends ListenerAdapter {
             String serverName = Objects.requireNonNull(event.getOption("server")).getAsString();
             String content = Objects.requireNonNull(event.getOption("content")).getAsString();
             Member member =  Objects.requireNonNull(event.getMember());
-            String roleId = this.discordBot.getRoleId();
-            String channelId = this.discordBot.getChannelId();
+            String roleId = this.bot.getRoleId();
+            String channelId = this.bot.getChannelId();
             boolean hasRole = member.getRoles().stream().anyMatch(role -> role.getId().equals(roleId));
             if (!hasRole) {
                 event.reply("You need the role <@&" + roleId + "> to use this command. Ask your admin!")
@@ -191,13 +191,17 @@ final class CommandListener extends ListenerAdapter {
             String message = String.join("\n", messages);
             event.reply(message).setEphemeral(ephemeral).queue();
         } else if (event.getName().equals("auth")) {
-            PlayerAuthManager playerAuthManager = this.discordBot.getPlayerAuthManager();
+            PlayerAuthManager playerAuthManager = this.bot.getPlayerAuthManager();
             String otp = Objects.requireNonNull(event.getOption("code")).getAsString();
             Player player = playerAuthManager.authenticate(otp);
             if (player == null) {
-                event.reply("Invalid code. Please retry and get a new code.").setEphemeral(true).queue();
+                event.reply("Invalid code. Please retry and get a new code.")
+                        .setEphemeral(true)
+                        .queue();
             } else {
-                event.reply("Welcome **" + player.getUsername() + "**! You can now connect to the servers.").setEphemeral(true).queue();
+                event.reply("Welcome **" + player.getUsername() + "**! You can now connect to the servers.")
+                        .setEphemeral(true)
+                        .queue();
             }
         }
     }

@@ -1,7 +1,7 @@
 ## Supersonic
 Version: 0.3.0
 
-A Velocity plugin
+A Velocity plugin that bridges Minecraft and Discord
 
 - Posts join/leave messages to Discord
 - Adds an authentication layer: all new users are required to submit a 6-digit OTP through Discord
