@@ -38,9 +38,12 @@ public class PlayerAuthManager {
     }
 
     public String request(Player player) {
-        String otp = this.generateOtp();
-        this.playerAuthStorage.savePlayerAuth(player, otp, Instant.now().plusSeconds(60 * 5));
-        return otp;
+        while (true) {
+            String otp = this.generateOtp();
+            if (this.playerAuthStorage.savePlayerAuth(player, otp, Instant.now().plusSeconds(60 * 5))) {
+                return otp;
+            }
+        }
     }
 
     public Player authenticate(String otp) {

@@ -32,8 +32,8 @@ public class InMemoryPlayerAuthStorage implements PlayerAuthStorage {
         this.logger.info("Scheduled auth requests to be cleaned every {} minute{}.", this.cleanerPeriod, this.cleanerPeriod == 1 ? "" : "s");
     }
 
-    public void savePlayerAuth(Player player, String otp, Instant expiresAt) {
-        this.authRequests.put(otp, new AuthRequest(player, expiresAt));
+    public boolean savePlayerAuth(Player player, String otp, Instant expiresAt) {
+        return this.authRequests.putIfAbsent(otp, new AuthRequest(player, expiresAt)) == null;
     }
 
     public Player authenticate(String otp) {
