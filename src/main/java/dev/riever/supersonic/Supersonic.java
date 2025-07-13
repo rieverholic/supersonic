@@ -17,6 +17,8 @@ import com.velocitypowered.api.proxy.server.ServerInfo;
 import dev.riever.supersonic.config.SupersonicConfig;
 import dev.riever.supersonic.config.SupersonicConfigManager;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -71,6 +73,7 @@ public class Supersonic {
         this.playerAuthManager = new PlayerAuthManager(
                 whitelistFile,
                 authConfig.getStorageType(),
+                authConfig.getMaxRequestAge(),
                 authConfig.getCleanerPeriod(),
                 this.random,
                 this.logger
@@ -126,13 +129,18 @@ public class Supersonic {
         Player player = event.getPlayer();
         if (!this.playerAuthManager.isAuthenticated(player)) {
             String otp = this.playerAuthManager.request(player);
-            Component reply = Component.text("Welcome to Joon's Dreamyard! Please submit this code on Discord with §a/auth §b<code>§f command:")
-                    .append(Component.newline())
-                    .append(Component.newline())
-                    .append(Component.text("§l" + otp + "§r"))
-                    .append(Component.newline())
-                    .append(Component.newline())
-                    .append(Component.text("This code will expire in 5 minutes."));
+            int maxRequestAge = this.configManager.getConfig().getAuth().getMaxRequestAge();
+            Component reply = Component.text("Welcome to Joon's Dreamyard! Please submit this code on Discord with ")
+                    .append(Component.text("/auth", NamedTextColor.GREEN))
+                    .appendSpace()
+                    .append(Component.text("<code>", NamedTextColor.AQUA))
+                    .append(Component.text(" command:"))
+                    .appendNewline()
+                    .appendNewline()
+                    .append(Component.text(otp).decorate(TextDecoration.BOLD))
+                    .appendNewline()
+                    .appendNewline()
+                    .append(Component.text("This code will expire in " + maxRequestAge + " minutes."));
             event.setResult(LoginEvent.ComponentResult.denied(reply));
             this.logger.info("Authentication request from {} ({})", player.getUsername(), player.getUniqueId());
         }
@@ -151,12 +159,11 @@ final class DiscordChatCommand implements RawCommand {
         String content = invocation.arguments();
         CommandSource source = invocation.source();
         if (source instanceof Player player) {
-            String replyMessage = crossChatManager.minecraftToDiscord(player, content);
-            Component text = Component.text(replyMessage);
+            Component replyMessage = crossChatManager.minecraftToDiscord(player, content);
             RegisteredServer server = player.getCurrentServer()
                     .map(ServerConnection::getServer)
                     .orElse(null);
-            Objects.requireNonNullElse(server, player).sendMessage(text);
+            Objects.requireNonNullElse(server, player).sendMessage(replyMessage);
         }
     }
 }

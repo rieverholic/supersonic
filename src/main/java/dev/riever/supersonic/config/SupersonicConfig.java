@@ -25,12 +25,16 @@ public class SupersonicConfig {
         @Comment("Type of storage to store auth requests. Currently only supports in-memory.")
         @Setting(value = "storage-type")
         private String storageType = "in-memory";
-        @Comment("The maximum amount of time (in minutes) to keep auth requests in memory before they are automatically removed.")
+        @Comment("The amount of time (in minutes) between each scheduled cleanup of expired auth requests.")
         @Setting(value = "cleaner-period")
         private int cleanerPeriod = 5;
+        @Comment("The maximum amount of time (in minutes) to keep auth requests in memory before they are automatically removed.")
+        @Setting(value = "max-request-age")
+        private int maxRequestAge = 5;
 
         public String getStorageType() { return this.storageType; }
         public int getCleanerPeriod() { return this.cleanerPeriod; }
+        public int getMaxRequestAge() { return this.maxRequestAge; }
     }
 
     @Comment("Discord API settings.")

@@ -13,12 +13,21 @@ import java.util.Random;
 public class PlayerAuthManager {
     private final WhitelistManager whitelistManager;
     private final PlayerAuthStorage playerAuthStorage;
+    private final int maxRequestAge;
     private final Random random;
     private final Logger logger;
 
-    public PlayerAuthManager(Path whitelistFile, String storageType, int cleanerPeriod, Random random, Logger logger) {
+    public PlayerAuthManager(
+            Path whitelistFile,
+            String storageType,
+            int maxRequestAge,
+            int cleanerPeriod,
+            Random random,
+            Logger logger
+    ) {
         this.whitelistManager = new WhitelistManager(whitelistFile);
         this.playerAuthStorage = new InMemoryPlayerAuthStorage(logger, cleanerPeriod);
+        this.maxRequestAge = maxRequestAge;
         this.random = random;
         this.logger = logger;
     }
@@ -40,7 +49,7 @@ public class PlayerAuthManager {
     public String request(Player player) {
         while (true) {
             String otp = this.generateOtp();
-            if (this.playerAuthStorage.savePlayerAuth(player, otp, Instant.now().plusSeconds(60 * 5))) {
+            if (this.playerAuthStorage.savePlayerAuth(player, otp, Instant.now().plusSeconds(60L * this.maxRequestAge))) {
                 return otp;
             }
         }
