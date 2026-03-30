@@ -32,6 +32,7 @@ public class DiscordBot {
     private final ProxyServer proxyServer;
     private final CrossChatManager crossChatManager;
     private final PlayerAuthManager playerAuthManager;
+    private final boolean autoAddRole;
     private final Logger logger;
 
     private JDA jda;
@@ -42,6 +43,7 @@ public class DiscordBot {
             String roleId,
             ProxyServer proxyServer,
             PlayerAuthManager playerAuthManager,
+            boolean autoAddRole,
             Logger logger
     ) {
         this.token = token;
@@ -51,6 +53,7 @@ public class DiscordBot {
         this.proxyServer = proxyServer;
         this.crossChatManager = new CrossChatManager(proxyServer, this, logger);
         this.playerAuthManager = playerAuthManager;
+        this.autoAddRole = autoAddRole;
     }
 
     public void initialize() {
@@ -63,8 +66,8 @@ public class DiscordBot {
             throw new RuntimeException(e);
         }
         this.jda.addEventListener(
-                new CommandListener(this, this.proxyServer, this.crossChatManager, this.logger),
-                new MemberRoleListener(this.crossChatManager, this.roleId, this.logger)
+                new CommandListener(this, this.logger),
+                new MemberRoleListener(this, this.logger)
         );
         List<Member> memberList = this.getGuild().findMembersWithRoles(this.getRole()).get();
         this.crossChatManager.addDiscordMembers(memberList);
@@ -122,28 +125,31 @@ public class DiscordBot {
     public PlayerAuthManager getPlayerAuthManager() {
         return this.playerAuthManager;
     }
+
+    public ProxyServer getProxyServer() {
+        return this.proxyServer;
+    }
+
+    public boolean isAutoAddRole() {
+        return this.autoAddRole;
+    }
 }
 
 final class CommandListener extends ListenerAdapter {
-    private final ProxyServer proxyServer;
     private final DiscordBot bot;
     private final Logger logger;
 
     private final Map<String, String> hostMap;
 
-    private final CrossChatManager crossChatManager;
-
-    public CommandListener(DiscordBot bot, ProxyServer proxyServer, CrossChatManager crossChatManager, Logger logger) {
-        this.proxyServer = proxyServer;
+    public CommandListener(DiscordBot bot, Logger logger) {
         this.bot = bot;
         this.logger = logger;
-        this.crossChatManager = crossChatManager;
         this.hostMap = new HashMap<>();
         this.initializeHostMap();
     }
 
     public void initializeHostMap() {
-        this.proxyServer.getConfiguration().getForcedHosts().forEach((hostname, serverNameList) -> {
+        this.bot.getProxyServer().getConfiguration().getForcedHosts().forEach((hostname, serverNameList) -> {
             for (String serverName : serverNameList) {
                 this.hostMap.put(serverName, hostname);
             }
@@ -171,9 +177,9 @@ final class CommandListener extends ListenerAdapter {
                         .queue();
                 return;
             }
-            RegisteredServer server = this.proxyServer.getServer(serverName).orElse(null);
+            RegisteredServer server = this.bot.getProxyServer().getServer(serverName).orElse(null);
             if (server != null) {
-                String replyMessage = this.crossChatManager.discordToMinecraft(member, content, server);
+                String replyMessage = this.bot.getCrossChatManager().discordToMinecraft(member, content, server);
                 event.reply(replyMessage).queue();
             } else {
                 event.reply("Server not found.").setEphemeral(true).queue();
@@ -182,7 +188,7 @@ final class CommandListener extends ListenerAdapter {
             OptionMapping option = event.getOption("ephemeral");
             boolean ephemeral = option != null && option.getAsBoolean();
             List<String> messages = new ArrayList<>();
-            for (RegisteredServer server : this.proxyServer.getAllServers()) {
+            for (RegisteredServer server : this.bot.getProxyServer().getAllServers()) {
                 String serverName = server.getServerInfo().getName();
                 String serverHostname = this.hostMap.get(serverName);
                 String serverString = "`" + serverName + "`" + (serverHostname != null ? " (" + serverHostname + ")" : "");
@@ -199,6 +205,12 @@ final class CommandListener extends ListenerAdapter {
                         .setEphemeral(true)
                         .queue();
             } else {
+                if (this.bot.isAutoAddRole()) {
+                    Member member = event.getMember();
+                    if (member != null) {
+                        member.getGuild().addRoleToMember(member, this.bot.getRole()).queue();
+                    }
+                }
                 event.reply("Welcome **" + player.getUsername() + "**! You can now connect to the servers.")
                         .setEphemeral(true)
                         .queue();
@@ -208,29 +220,27 @@ final class CommandListener extends ListenerAdapter {
 }
 
 final class MemberRoleListener extends ListenerAdapter {
-    private final CrossChatManager manager;
-    private final String roleId;
+    private final DiscordBot bot;
     private final Logger logger;
 
-    public MemberRoleListener(CrossChatManager manager, String roleId, Logger logger) {
-        this.manager = manager;
-        this.roleId = roleId;
+    public MemberRoleListener(DiscordBot bot, Logger logger) {
+        this.bot = bot;
         this.logger = logger;
     }
 
     @Override
     public void onGuildMemberRoleAdd(GuildMemberRoleAddEvent event) {
         Member member = event.getMember();
-        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.roleId))) {
-            this.manager.addDiscordMember(member);
+        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.bot.getRoleId()))) {
+            this.bot.getCrossChatManager().addDiscordMember(member);
         }
     }
 
     @Override
     public void onGuildMemberRoleRemove(GuildMemberRoleRemoveEvent event) {
         Member member = event.getMember();
-        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.roleId))) {
-            this.manager.removeDiscordMember(member);
+        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.bot.getRoleId()))) {
+            this.bot.getCrossChatManager().removeDiscordMember(member);
         }
     }
 }

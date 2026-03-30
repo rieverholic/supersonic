@@ -9,11 +9,13 @@ import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
+import com.velocitypowered.api.proxy.ConsoleCommandSource;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.ServerConnection;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.api.proxy.server.ServerInfo;
+import com.velocitypowered.api.proxy.server.ServerPing;
 import dev.riever.supersonic.config.SupersonicConfig;
 import dev.riever.supersonic.config.SupersonicConfigManager;
 import net.kyori.adventure.text.Component;
@@ -24,6 +26,7 @@ import org.slf4j.Logger;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 @Plugin(id = "supersonic", name = "Supersonic", version = "0.3.0-SNAPSHOT",
         url = "https://github.com/rieverholic/supersonic", description = "A velocity plugin for Joon's Dreamyard", authors = {"Riever"})
@@ -88,18 +91,24 @@ public class Supersonic {
                 discordConfig.getRoleId(),
                 this.proxyServer,
                 this.playerAuthManager,
+                authConfig.getAutoAddDiscordRole(),
                 this.logger
         );
         this.discordBot.initialize();
 
-        // Initialize Minecraft command
+        // Initialize Minecraft commands
         CommandManager commandManager = this.proxyServer.getCommandManager();
-        CommandMeta commandMeta = commandManager.metaBuilder("dsay")
+        CommandMeta chatCommandMeta = commandManager.metaBuilder("dsay")
                 .plugin(this)
                 .build();
-
         RawCommand chatCommand = new DiscordChatCommand(this.discordBot.getCrossChatManager());
-        commandManager.register(commandMeta, chatCommand);
+        commandManager.register(chatCommandMeta, chatCommand);
+
+        CommandMeta pingCommandMeta = commandManager.metaBuilder("ping")
+                .plugin(this)
+                .build();
+        RawCommand pingCommand = new PingCommand(this.proxyServer);
+        commandManager.register(pingCommandMeta, pingCommand);
     }
 
     @Subscribe
@@ -165,5 +174,34 @@ final class DiscordChatCommand implements RawCommand {
                     .orElse(null);
             Objects.requireNonNullElse(server, player).sendMessage(replyMessage);
         }
+    }
+}
+
+final class PingCommand implements RawCommand {
+    private final ProxyServer proxyServer;
+
+    public PingCommand(ProxyServer proxyServer) {
+        this.proxyServer = proxyServer;
+    }
+
+    @Override
+    public void execute(Invocation invocation) {
+        CommandSource source = invocation.source();
+        String serverName = invocation.arguments();
+        if (source instanceof ConsoleCommandSource console) {
+            this.proxyServer.getServer(serverName).ifPresent(server -> {
+                try {
+                    ServerPing ping = server.ping().get();
+                    console.sendMessage(Component.text(ping.toString()));
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+    }
+
+    @Override
+    public boolean hasPermission(final Invocation invocation) {
+        return invocation.source() instanceof ConsoleCommandSource;
     }
 }

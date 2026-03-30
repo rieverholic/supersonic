@@ -32,9 +32,14 @@ public class SupersonicConfig {
         @Setting(value = "max-request-age")
         private int maxRequestAge = 5;
 
+        @Comment("Whether to add the Discord role automatically for whitelisted users.")
+        @Setting(value = "auto-add-discord-role")
+        private boolean autoAddDiscordRole = false;
+
         public String getStorageType() { return this.storageType; }
         public int getCleanerPeriod() { return this.cleanerPeriod; }
         public int getMaxRequestAge() { return this.maxRequestAge; }
+        public boolean getAutoAddDiscordRole() { return this.autoAddDiscordRole; }
     }
 
     @Comment("Discord API settings.")

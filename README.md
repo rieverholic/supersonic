@@ -13,5 +13,4 @@ A Velocity plugin that bridges Minecraft and Discord
 
 ```shell
 ./gradlew build
-./gradlew shadowJar
 ```
