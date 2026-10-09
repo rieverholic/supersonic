@@ -1,10 +1,10 @@
 plugins {
     id("java")
-    id("com.gradleup.shadow") version "8.3.5"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 group = "dev.riever"
-version = "0.3.0-SNAPSHOT"
+version = "0.4.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -17,9 +17,9 @@ repositories {
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
-    annotationProcessor("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
-    implementation("net.dv8tion:JDA:5.6.1") {
+    compileOnly("com.velocitypowered:velocity-api:4.2.0")
+    annotationProcessor("com.velocitypowered:velocity-api:4.2.0")
+    implementation("net.dv8tion:JDA:6.7.0") {
         exclude(module="opus-java")
     }
 }
@@ -30,6 +30,7 @@ tasks {
             include(dependency("net.dv8tion:JDA"))
             include(dependency("com.neovisionaries:nv-websocket-client"))
             include(dependency("com.squareup.okhttp3:okhttp"))
+            include(dependency("com.squareup.okhttp3:okhttp-jvm"))
             include(dependency("org.apache.commons:commons-collections4"))
             include(dependency("net.sf.trove4j:core"))
             include(dependency("com.fasterxml.jackson.core:jackson-core"))

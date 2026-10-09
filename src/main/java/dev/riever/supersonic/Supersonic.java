@@ -28,8 +28,9 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
-@Plugin(id = "supersonic", name = "Supersonic", version = "0.3.0-SNAPSHOT",
-        url = "https://github.com/rieverholic/supersonic", description = "A velocity plugin for Joon's Dreamyard", authors = {"Riever"})
+@Plugin(id = "supersonic", name = "Supersonic", version = "0.4.0-SNAPSHOT",
+        url = "https://github.com/rieverholic/supersonic", description = "A velocity plugin for Joon's Dreamyard",
+        authors = {"Riever"})
 public class Supersonic {
 
     private final ProxyServer proxyServer;
@@ -54,6 +55,7 @@ public class Supersonic {
         // Initialize config
         Path configFile = this.dataDirectory.resolve("config.yml");
         Path whitelistFile = this.dataDirectory.resolve("whitelist.yml");
+        Path discordFile = this.dataDirectory.resolve("discord.yml");
         this.configManager = new SupersonicConfigManager(configFile, logger);
         SupersonicConfig config = this.configManager.initialize();
 
@@ -87,8 +89,7 @@ public class Supersonic {
         SupersonicConfig.Discord discordConfig = config.getDiscord();
         this.discordBot = new DiscordBot(
                 discordConfig.getBotToken(),
-                discordConfig.getChannelId(),
-                discordConfig.getRoleId(),
+                discordFile,
                 this.proxyServer,
                 this.playerAuthManager,
                 authConfig.getAutoAddDiscordRole(),
@@ -118,7 +119,8 @@ public class Supersonic {
         Optional<ServerConnection> conn = player.getCurrentServer();
         if (conn.isPresent()) {
             ServerInfo serverInfo = conn.get().getServerInfo();
-            this.discordBot.sendMessage("**" + username + "** joined `" + serverInfo.getName() + "`.");
+            String serverName = serverInfo.getName();
+            this.discordBot.broadcast(serverName, "**" + username + "** joined `" + serverName + "`.");
         }
     }
 
@@ -129,7 +131,8 @@ public class Supersonic {
         Optional<ServerConnection> conn = player.getCurrentServer();
         if (conn.isPresent()) {
             ServerInfo serverInfo = conn.get().getServerInfo();
-            this.discordBot.sendMessage("**" + username + "** left `" + serverInfo.getName() + "`.");
+            String serverName = serverInfo.getName();
+            this.discordBot.broadcast(serverName, "**" + username + "** left `" + serverName + "`.");
         }
     }
 

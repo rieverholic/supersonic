@@ -35,7 +35,7 @@ public class CrossChatManager {
     }
 
     public String discordToMinecraft(Member sender, String message, RegisteredServer destServer) {
-        Guild guild = this.discordBot.getGuild();
+        Guild guild = sender.getGuild();
         TextComponent.Builder result = Component.text()
                 .append(Component.text("[Discord]", NamedTextColor.GOLD))
                 .appendSpace()
@@ -86,8 +86,9 @@ public class CrossChatManager {
         RegisteredServer server = sender.getCurrentServer()
                 .map(ServerConnection::getServer)
                 .orElse(null);
-        String sourceForDiscord = "**" + username + "**" + (server != null ? " from `" + server.getServerInfo().getName() + "`" : "");
-        this.discordBot.sendMessage(sourceForDiscord + ": " + discordMessage);
+        String serverName = server != null ? server.getServerInfo().getName() : "Unknown";
+        String sourceForDiscord = "**" + username + "** from `" + serverName + "`";
+        this.discordBot.broadcast(serverName, sourceForDiscord + ": " + discordMessage);
         return Component.text()
                 .append(Component.text(username, NamedTextColor.GREEN))
                 .append(Component.text(" to "))

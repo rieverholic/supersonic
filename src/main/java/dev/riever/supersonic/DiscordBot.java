@@ -3,14 +3,12 @@ package dev.riever.supersonic;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
+import dev.riever.supersonic.config.DiscordChannelManager;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
-import net.dv8tion.jda.api.entities.Role;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
-import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleAddEvent;
-import net.dv8tion.jda.api.events.guild.member.GuildMemberRoleRemoveEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
@@ -18,7 +16,7 @@ import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.slf4j.Logger;
 
-import javax.annotation.Nonnull;
+import java.nio.file.Path;
 import java.util.*;
 
 import static net.dv8tion.jda.api.interactions.commands.OptionType.BOOLEAN;
@@ -26,8 +24,7 @@ import static net.dv8tion.jda.api.interactions.commands.OptionType.STRING;
 
 public class DiscordBot {
     private final String token;
-    private final String channelId;
-    private final String roleId;
+    private final DiscordChannelManager channelManager;
 
     private final ProxyServer proxyServer;
     private final CrossChatManager crossChatManager;
@@ -39,16 +36,14 @@ public class DiscordBot {
 
     public DiscordBot(
             String token,
-            String channelId,
-            String roleId,
+            Path configFile,
             ProxyServer proxyServer,
             PlayerAuthManager playerAuthManager,
             boolean autoAddRole,
             Logger logger
     ) {
         this.token = token;
-        this.channelId = channelId;
-        this.roleId = roleId;
+        this.channelManager = new DiscordChannelManager(configFile);
         this.logger = logger;
         this.proxyServer = proxyServer;
         this.crossChatManager = new CrossChatManager(proxyServer, this, logger);
@@ -57,6 +52,7 @@ public class DiscordBot {
     }
 
     public void initialize() {
+        this.channelManager.load();
         this.jda = JDABuilder.createLight(token)
                 .enableIntents(GatewayIntent.GUILD_MEMBERS)
                 .build();
@@ -66,27 +62,26 @@ public class DiscordBot {
             throw new RuntimeException(e);
         }
         this.jda.addEventListener(
-                new CommandListener(this, this.logger),
-                new MemberRoleListener(this, this.logger)
+                new CommandListener(this, this.logger)
         );
-        List<Member> memberList = this.getGuild().findMembersWithRoles(this.getRole()).get();
-        this.crossChatManager.addDiscordMembers(memberList);
 
         // Initialize commands
         this.jda.updateCommands().addCommands(
                 Commands.slash("servers", "Display all current active servers")
-                        .addOption(BOOLEAN, "ephemeral", "Message only shown to you")
-        ).queue();
-        this.getGuild().updateCommands().addCommands(
+                        .addOption(BOOLEAN, "ephemeral", "Message only shown to you"),
                 Commands.slash("say", "Send a system message to a Minecraft server")
                         .addOption(STRING, "server", "Name of the server to send a message to", true)
                         .addOption(STRING, "content", "Message to send", true),
                 Commands.slash("auth", "Authenticates a Minecraft account")
-                        .addOption(STRING, "code", "The one-time passcode displayed on screen", true)
+                        .addOption(STRING, "code", "The one-time passcode displayed on screen", true),
+                Commands.slash("subscribe", "Subscribe to a server and activate cross chat")
+                        .addOption(STRING, "server", "Name of the server to subscribe to", true),
+                Commands.slash("unsubscribe", "Unsubscribe from a server")
+                        .addOption(STRING, "server", "Name of the server to subscribe to", true)
         ).queue();
     }
 
-    public String getDisplayName(@Nonnull Member member) {
+    public String getDisplayName(Member member) {
         String displayName = member.getNickname();
         if (displayName == null) {
             displayName = member.getEffectiveName();
@@ -94,28 +89,32 @@ public class DiscordBot {
         return displayName;
     }
 
-    public void sendMessage(String message) {
-        this.getChannel().sendMessage(message).queue();
+    public void broadcast(String sourceServer, String message) {
+        this.channelManager.getChannels().forEach(channelId -> {
+            if (this.channelManager.isSubscribing(channelId, sourceServer)) {
+                this.getChannel(channelId).sendMessage(message).queue();
+            }
+        });
     }
 
-    public TextChannel getChannel() {
-        return this.jda.getTextChannelById(this.channelId);
+    public boolean isSubscribed(String channelId) {
+        return this.channelManager.contains(channelId);
     }
 
-    public String getChannelId() {
-        return this.channelId;
+    public boolean subscribe(String channelId, String serverName) {
+        return this.channelManager.subscribe(channelId, serverName);
     }
 
-    public String getRoleId() {
-        return this.roleId;
+    public boolean unsubscribe(String channelId, String serverName) {
+        return this.channelManager.unsubscribe(channelId, serverName);
     }
 
-    public Role getRole() {
-        return this.jda.getRoleById(this.roleId);
+    public TextChannel getChannel(String channelId) {
+        return this.jda.getTextChannelById(channelId);
     }
 
-    public Guild getGuild() {
-        return this.getChannel().getGuild();
+    public Guild getGuild(String channelId) {
+        return this.getChannel(channelId).getGuild();
     }
 
     public CrossChatManager getCrossChatManager() {
@@ -162,17 +161,10 @@ final class CommandListener extends ListenerAdapter {
             String serverName = Objects.requireNonNull(event.getOption("server")).getAsString();
             String content = Objects.requireNonNull(event.getOption("content")).getAsString();
             Member member =  Objects.requireNonNull(event.getMember());
-            String roleId = this.bot.getRoleId();
-            String channelId = this.bot.getChannelId();
-            boolean hasRole = member.getRoles().stream().anyMatch(role -> role.getId().equals(roleId));
-            if (!hasRole) {
-                event.reply("You need the role <@&" + roleId + "> to use this command. Ask your admin!")
-                        .setEphemeral(true)
-                        .queue();
-                return;
-            }
-            if (!Objects.requireNonNullElse(event.getChannelId(), "").equals(channelId)) {
-                event.reply("This command can only be used in <#" + channelId + ">.")
+            String channelId = event.getChannelId();
+            if (!this.bot.isSubscribed(channelId)) {
+                event.reply("This channel is not subscribing to `" + serverName + "`! " +
+                                "Use `/subscribe " + serverName + "` to subscribe.")
                         .setEphemeral(true)
                         .queue();
                 return;
@@ -205,42 +197,30 @@ final class CommandListener extends ListenerAdapter {
                         .setEphemeral(true)
                         .queue();
             } else {
-                if (this.bot.isAutoAddRole()) {
-                    Member member = event.getMember();
-                    if (member != null) {
-                        member.getGuild().addRoleToMember(member, this.bot.getRole()).queue();
-                    }
-                }
                 event.reply("Welcome **" + player.getUsername() + "**! You can now connect to the servers.")
                         .setEphemeral(true)
                         .queue();
             }
-        }
-    }
-}
-
-final class MemberRoleListener extends ListenerAdapter {
-    private final DiscordBot bot;
-    private final Logger logger;
-
-    public MemberRoleListener(DiscordBot bot, Logger logger) {
-        this.bot = bot;
-        this.logger = logger;
-    }
-
-    @Override
-    public void onGuildMemberRoleAdd(GuildMemberRoleAddEvent event) {
-        Member member = event.getMember();
-        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.bot.getRoleId()))) {
-            this.bot.getCrossChatManager().addDiscordMember(member);
-        }
-    }
-
-    @Override
-    public void onGuildMemberRoleRemove(GuildMemberRoleRemoveEvent event) {
-        Member member = event.getMember();
-        if (event.getRoles().stream().anyMatch(role -> role.getId().equals(this.bot.getRoleId()))) {
-            this.bot.getCrossChatManager().removeDiscordMember(member);
+        } else if (event.getName().equals("subscribe")) {
+            String serverName = Objects.requireNonNull(event.getOption("server")).getAsString();
+            if (this.bot.subscribe(event.getChannelId(), serverName)) {
+                event.reply("This channel has subscribed for `" + serverName + "`!")
+                        .queue();
+            } else {
+                event.reply("This channel has already subscribed for `" + serverName + "`.")
+                        .setEphemeral(true)
+                        .queue();
+            }
+        } else if (event.getName().equals("unsubscribe")) {
+            String serverName = Objects.requireNonNull(event.getOption("server")).getAsString();
+            if (this.bot.unsubscribe(event.getChannelId(), serverName)) {
+                event.reply("This channel has unsubscribed from `" + serverName + "`.")
+                        .queue();
+            } else {
+                event.reply("This channel has not subscribed for `" + serverName + "`.")
+                        .setEphemeral(true)
+                        .queue();
+            }
         }
     }
 }
