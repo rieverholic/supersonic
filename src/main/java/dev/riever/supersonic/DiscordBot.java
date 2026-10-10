@@ -184,7 +184,9 @@ final class CommandListener extends ListenerAdapter {
                 String serverName = server.getServerInfo().getName();
                 String serverHostname = this.hostMap.get(serverName);
                 String serverString = "`" + serverName + "`" + (serverHostname != null ? " (" + serverHostname + ")" : "");
-                messages.add(serverString + ": **" + server.getPlayersConnected().size() + "** players online");
+                int numPlayers = server.getPlayersConnected().size();
+                messages.add(serverString + ": **" + numPlayers + "** " +
+                        (numPlayers == 1 ? "player" : "players") + " online");
             }
             String message = String.join("\n", messages);
             event.reply(message).setEphemeral(ephemeral).queue();
